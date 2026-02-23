@@ -4,7 +4,9 @@
 #include <iostream>
 #include <vector>
 #include <string>
-#include <cstdlib> // for std::atoi
+#include <cstdlib> // for std::strtol
+#include <cerrno>
+#include <climits>
 
 /**
  * @file main.cpp
@@ -22,18 +24,51 @@
  * For other ports, performs a basic TCP port scan.
  */
 
+/**
+ * @brief Parses a port number from a string with validation.
+ * @param str String to parse.
+ * @param out Output port number on success.
+ * @return true on success, false if invalid.
+ */
+static bool parse_port(const char* str, int& out) {
+    char* end;
+    errno = 0;
+    long val = std::strtol(str, &end, 10);
+    if (errno != 0 || end == str || *end != '\0') {
+        std::cerr << "Error: '" << str << "' is not a valid integer.\n";
+        return false;
+    }
+    if (val < 1 || val > 65535) {
+        std::cerr << "Error: port " << val << " is out of range (1-65535).\n";
+        return false;
+    }
+    out = static_cast<int>(val);
+    return true;
+}
+
 int main(int argc, char* argv[]) {
     std::vector<std::string> hosts;
     int port_start = -1, port_end = -1;
 
-    if (argc == 4) {
-        // Usage: ./port_scanner <host> <start_port> <end_port>
-        hosts.push_back(argv[1]);
-        port_start = std::atoi(argv[2]);
-        port_end = std::atoi(argv[3]);
-    } else {
+    if (argc == 1) {
         // Use defaults from config.h
         hosts = APPROVED_HOSTS;
+    } else if (argc == 4) {
+        // Usage: ./port_scanner <host> <start_port> <end_port>
+        if (!parse_port(argv[2], port_start) || !parse_port(argv[3], port_end)) {
+            return 1;
+        }
+        if (port_start > port_end) {
+            std::cerr << "Error: start_port (" << port_start
+                      << ") must be <= end_port (" << port_end << ").\n";
+            return 1;
+        }
+        hosts.push_back(argv[1]);
+    } else {
+        std::cerr << "Usage:\n"
+                  << "  " << argv[0] << "                          # scan default hosts/ports\n"
+                  << "  " << argv[0] << " <host> <start> <end>     # scan custom host and port range\n";
+        return 1;
     }
 
     if (port_start > 0 && port_end > 0) {

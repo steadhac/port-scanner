@@ -8,26 +8,73 @@ Detects port status: OPEN, CLOSED, or FILTERED
 Retrieves and displays TLS certificate details for HTTPS ports
 Cross-platform (tested on macOS and Linux)
 Clean, Doxygen-documented code
-### Usage
-Scan a Custom Host and Port Range
+### How to Execute
 
+All commands below must be run from inside the `port_scanner_cpp/` directory:
 ```bash
-./port_scanner <host> <start_port> <end_port>
-```
-Example:
-```bash
-./port_scanner 127.0.0.1 8000 8000
+cd port_scanner_cpp
 ```
 
-Scan Default Hosts and Ports
+#### 1. Build first (if not already built)
 ```bash
-./port_scanner
+mkdir -p build && cd build
+cmake ..
+cmake --build .
+cd ..
 ```
-(Default hosts and ports are defined in config.h)
+The binary is produced at `port_scanner_cpp/build/port_scanner`.
+
+#### 2. Default scan
+Scans `127.0.0.1` and `localhost` on the secure ports defined in `config.h` (SSH 22, RDP 3389, VNC 5900, HTTPS 443):
+```bash
+./build/port_scanner
+```
+
+#### 3. Scan a custom host and port range
+```bash
+./build/port_scanner <host> <start_port> <end_port>
+```
+
+**Examples:**
+```bash
+# Scan a single port
+./build/port_scanner 127.0.0.1 5432 5432
+
+# Scan a port range
+./build/port_scanner 127.0.0.1 1 1024
+
+# Scan all ports (takes several minutes)
+./build/port_scanner 127.0.0.1 1 65535
+
+# Scan a named host
+./build/port_scanner localhost 80 80
+```
+
+#### 4. Show only open ports
+Results go to stdout, errors go to stderr — filter them independently:
+```bash
+./build/port_scanner 127.0.0.1 1 65535 2>/dev/null | grep OPEN
+```
+
+#### 5. Error cases the scanner catches
+```bash
+# Wrong number of arguments → usage message
+./build/port_scanner 127.0.0.1 80
+
+# Non-numeric port
+./build/port_scanner 127.0.0.1 abc 443
+
+# Port out of range
+./build/port_scanner 127.0.0.1 0 99999
+
+# Start port greater than end port
+./build/port_scanner 127.0.0.1 9000 80
+```
 
 ### Output Example
 ```bash
 Host: 127.0.0.1 Port: 8000 Status: OPEN
+Host: 127.0.0.1 Port: 22 (SSH) Status: CLOSED
 Host: example.com Port: 443 (HTTPS) Cert valid: yes Subject: ... Issuer: ... Expiry: ... Self-signed: no
 ```
 

@@ -5,7 +5,8 @@
 #include <fcntl.h>
 #include <netdb.h>
 #include <cstring>
-#include <errno.h>
+#include <cerrno>
+#include <iostream>
 
 /**
  * @brief Attempts to connect to a TCP port on a host.
@@ -16,10 +17,16 @@
  */
 PortStatus scan_port(const std::string& host, int port, int timeout_sec) {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) return PortStatus::CLOSED;
+    if (sock < 0) {
+        std::cerr << "Error: socket() failed for " << host << ":" << port
+                  << " - " << std::strerror(errno) << "\n";
+        return PortStatus::CLOSED;
+    }
 
     struct hostent* server = gethostbyname(host.c_str());
     if (!server) {
+        std::cerr << "Error: could not resolve host '" << host << "' - "
+                  << hstrerror(h_errno) << "\n";
         close(sock);
         return PortStatus::CLOSED;
     }
@@ -32,7 +39,16 @@ PortStatus scan_port(const std::string& host, int port, int timeout_sec) {
 
     // Set non-blocking
     int flags = fcntl(sock, F_GETFL, 0);
-    fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+    if (flags < 0) {
+        std::cerr << "Error: fcntl(F_GETFL) failed - " << std::strerror(errno) << "\n";
+        close(sock);
+        return PortStatus::CLOSED;
+    }
+    if (fcntl(sock, F_SETFL, flags | O_NONBLOCK) < 0) {
+        std::cerr << "Error: fcntl(F_SETFL) failed - " << std::strerror(errno) << "\n";
+        close(sock);
+        return PortStatus::CLOSED;
+    }
 
     int res = connect(sock, (struct sockaddr*)&addr, sizeof(addr));
     if (res < 0 && errno != EINPROGRESS) {
@@ -49,16 +65,21 @@ PortStatus scan_port(const std::string& host, int port, int timeout_sec) {
 
     res = select(sock + 1, nullptr, &fdset, nullptr, &tv);
     if (res == 1) {
-        int so_error;
+        int so_error = 0;
         socklen_t len = sizeof(so_error);
-        getsockopt(sock, SOL_SOCKET, SO_ERROR, &so_error, &len);
+        if (getsockopt(sock, SOL_SOCKET, SO_ERROR, &so_error, &len) < 0) {
+            std::cerr << "Error: getsockopt() failed - " << std::strerror(errno) << "\n";
+            close(sock);
+            return PortStatus::CLOSED;
+        }
         close(sock);
-        if (so_error == 0) return PortStatus::OPEN;
-        else return PortStatus::CLOSED;
+        return (so_error == 0) ? PortStatus::OPEN : PortStatus::CLOSED;
     } else if (res == 0) {
         close(sock);
         return PortStatus::FILTERED; // Timeout
     } else {
+        std::cerr << "Error: select() failed for " << host << ":" << port
+                  << " - " << std::strerror(errno) << "\n";
         close(sock);
         return PortStatus::CLOSED;
     }
